@@ -39,6 +39,6 @@
     }
   },
   "scripts": {
-    "test": "node --experimental-strip-types tests/e2e.ts"
+    "test": "node tests/e2e.mjs"
   }
 }
