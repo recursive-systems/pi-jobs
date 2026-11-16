@@ -1,6 +1,6 @@
 {
   "name": "pi-jobs",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Background shell jobs for the Pi coding agent: a command still running after a few seconds moves to the background on its own, is tracked, and the session is told when it finishes.",
   "license": "MIT",
   "private": true,
@@ -19,7 +19,8 @@
   },
   "pi": {
     "extensions": [
-      "./index.ts"
+      "./index.ts",
+      "node_modules/pi-statusbar/index.ts"
     ]
   },
   "peerDependencies": {
@@ -40,5 +41,8 @@
   },
   "scripts": {
     "test": "node tests/e2e.mjs"
+  },
+  "dependencies": {
+    "pi-statusbar": "github:recursive-systems/pi-statusbar#v0.1.0"
   }
 }

@@ -49,9 +49,9 @@ Code's footer does: one glyph per running job, failed and killed ones for 30 s, 
 finished fine leaves at once with a `1 done, /jobs` hint for 30 s (`jobs ◉✕ · 1 done, /jobs`, or
 `jobs none`). `/jobs` keeps every job until you clear it there.
 
-A status bar extension can show that line as one of its rows: when it emits `statusbar:ready` on
-`pi.events`, pi-jobs sends `statusbar:item` (`{ id: "jobs", order, render(theme, width), open(ctx) }`,
-`open` shows `/jobs`) instead of setting a footer status.
+pi-jobs bundles [pi-statusbar](https://github.com/recursive-systems/pi-statusbar), so that line gets
+its own row below the editor (`id: "jobs"`, order 25; opening it shows `/jobs`) instead of a footer
+status. Only one bar is drawn when pi-loop or pi-statusbar is installed too.
 
 ## Settings
 

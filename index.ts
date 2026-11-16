@@ -113,7 +113,7 @@ export default function (pi: ExtensionAPI) {
 		lingerTimer.unref?.();
 	}
 
-	/** Our row in a status bar extension (pi-loop's `statusbar:*` events): the same line, Enter opens /jobs. */
+	/** Our row in pi-statusbar (bundled; `statusbar:*` events): the same line, Enter opens /jobs. */
 	function registerBarItem() {
 		pi.events.emit("statusbar:item", {
 			id: "jobs",
