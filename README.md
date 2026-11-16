@@ -44,8 +44,10 @@ c            clear finished jobs
 Esc          close (or, while watching, back to the list)
 ```
 
-`◉` running, `●` done, `✕` failed, `◌` killed. The status line always shows the session's jobs, one
-glyph each (`jobs ◉●✕`, or `jobs none`); finished ones stay until you clear them in `/jobs`.
+`◉` running, `●` done, `✕` failed, `◌` killed. The status line shows what's going on now, as Claude
+Code's footer does: one glyph per running job, failed and killed ones for 30 s, and a job that
+finished fine leaves at once with a `1 done, /jobs` hint for 30 s (`jobs ◉✕ · 1 done, /jobs`, or
+`jobs none`). `/jobs` keeps every job until you clear it there.
 
 A status bar extension can show that line as one of its rows: when it emits `statusbar:ready` on
 `pi.events`, pi-jobs sends `statusbar:item` (`{ id: "jobs", order, render(theme, width), open(ctx) }`,

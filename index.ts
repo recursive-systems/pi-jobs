@@ -27,6 +27,8 @@ const LIVENESS = Symbol.for("@agegr/pi-web/session-liveness/v1");
 const SHUTDOWN_GRACE_MS = 1_000;
 /** The most job glyphs the status line shows; older ones collapse into `+n`. */
 const MAX_GLYPHS = 15;
+/** How long a failed or killed job stays in the status line, and a done one leaves a `/jobs` hint (as Claude Code does). */
+const LINGER_MS = 30_000;
 
 interface Shared { sessions: Map<string, Jobs>; exitHook: boolean }
 
@@ -85,12 +87,30 @@ export default function (pi: ExtensionAPI) {
 	// ------------------------------------------------------------ status --
 	function statusLine(theme?: any): string {
 		const fg = (color: string, t: string) => { try { return theme ? theme.fg(color, t) : t; } catch { return t; } };
-		// One glyph per job this session tracks, finished ones until cleared in /jobs; always shown, like loops.
-		const list = jobs?.list ?? [];
-		if (!list.length) return `${fg("muted", "jobs")} ${fg("dim", "none")}`;
+		// What's going on now, like Claude Code's footer: running jobs, and failed or killed ones for LINGER_MS.
+		// A job that finished fine leaves at once, with a `/jobs` hint for LINGER_MS. /jobs keeps them all.
+		const now = Date.now();
+		const recent = (j: Job) => !!j.endedAt && now - j.endedAt < LINGER_MS;
+		const all = jobs?.list ?? [];
+		const list = all.filter(j => j.state === "running" || (j.state !== "done" && recent(j)));
+		const done = all.filter(j => j.state === "done" && recent(j)).length;
+		const hint = done ? fg("dim", `${list.length ? " · " : ""}${done} done, /jobs`) : "";
+		if (!list.length) return `${fg("muted", "jobs")} ${hint || fg("dim", "none")}`;
 		const shown = list.slice(-MAX_GLYPHS);
 		const strip = shown.map(j => fg(GLYPH[j.state].color, GLYPH[j.state].glyph)).join("");
-		return `${fg("muted", "jobs")} ${strip}${list.length > shown.length ? fg("dim", ` +${list.length - shown.length}`) : ""}`;
+		return `${fg("muted", "jobs")} ${strip}${list.length > shown.length ? fg("dim", ` +${list.length - shown.length}`) : ""}${hint}`;
+	}
+
+	/** Redraw the status line when the next finished job's LINGER_MS runs out. */
+	let lingerTimer: ReturnType<typeof setTimeout> | undefined;
+	function scheduleExpiry() {
+		if (lingerTimer) clearTimeout(lingerTimer);
+		lingerTimer = undefined;
+		const now = Date.now();
+		const next = Math.min(...(jobs?.list ?? []).filter(j => j.endedAt && now - j.endedAt < LINGER_MS).map(j => j.endedAt! + LINGER_MS));
+		if (!Number.isFinite(next)) return;
+		lingerTimer = setTimeout(refreshStatus, next - now + 50);
+		lingerTimer.unref?.();
 	}
 
 	/** Our row in a status bar extension (pi-loop's `statusbar:*` events): the same line, Enter opens /jobs. */
@@ -106,6 +126,7 @@ export default function (pi: ExtensionAPI) {
 	function refreshStatus() {
 		if (!ctx) return;
 		registerLiveness();
+		scheduleExpiry();
 		try {
 			if (barMode) { registerBarItem(); return; }
 			let theme: any; try { theme = ctx.ui.theme; } catch { /* no UI */ }
@@ -172,6 +193,8 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_shutdown", async (event: { reason?: string }) => {
 		unregister?.(); unregister = undefined;
+		if (lingerTimer) clearTimeout(lingerTimer);
+		lingerTimer = undefined;
 		const own = jobs;
 		ctx = undefined; jobs = undefined;
 		if (!own) return;
