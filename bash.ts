@@ -21,7 +21,7 @@ const bashSchema = Type.Object({
 	command: Type.String({ description: "Shell command to execute" }),
 	timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (optional, no default timeout). Also applies once the command is a background job." })),
 	threshold: Type.Optional(Type.Number({ description: "Seconds to wait before a still-running command moves to the background as a job (default 5, or jobs.threshold in settings)" })),
-	background: Type.Optional(Type.Boolean({ description: "Start as a background job right away (servers, watchers, long builds)" })),
+	background: Type.Optional(Type.Boolean({ description: "Start as a background job right away: servers, watchers, things nobody waits on" })),
 	keep: Type.Optional(Type.Boolean({ description: "With background: keep the job running after this Pi session ends" })),
 });
 
@@ -38,7 +38,7 @@ const bashOutputSchema = Type.Object({
 
 export const BASH_GUIDELINES = [
 	"A bash command still running after a few seconds moves to the background as a job (j1, j2, …) and bash returns its id and output so far. Don't sleep, poll or re-run it: carry on with other work, and a message arrives when the job finishes.",
-	"Use bash with background: true for servers, watchers and anything long-running; add keep: true only if it must outlive this Pi session (other jobs are stopped when the session ends).",
+	"Use bash with background: true for servers and watchers (things nobody waits on); just run long builds and tests normally, they move to the background by themselves. Add keep: true only if a background job must outlive this Pi session; every other job is stopped when the session ends.",
 ];
 
 /** Pi's own env for commands: its shell env, with this session's PI_* variables. */
@@ -100,6 +100,7 @@ export function bashTool(getJobs: () => Jobs) {
 				script: settings.shellCommandPrefix ? `${settings.shellCommandPrefix}\n${params.command}` : params.command,
 				cwd, env: commandEnv(ctx), shell: shell.shell, shellArgs: shell.args, stdin: shell.commandTransport === "stdin",
 				timeoutMs: timeout === undefined ? undefined : timeout * 1000,
+				service: !!params.background,
 				keep: !!(params.background && params.keep),
 			});
 

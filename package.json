@@ -1,0 +1,44 @@
+{
+  "name": "pi-jobs",
+  "version": "0.1.0",
+  "description": "Background shell jobs for the Pi coding agent: a command still running after a few seconds moves to the background on its own, is tracked, and the session is told when it finishes.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "bash",
+    "background",
+    "jobs"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/recursive-systems/pi-jobs.git"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "@earendil-works/pi-tui": {
+      "optional": true
+    },
+    "typebox": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types tests/e2e.ts"
+  }
+}

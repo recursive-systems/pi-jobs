@@ -28,7 +28,9 @@ export interface Job {
 	state: JobState;
 	/** Why it ended other than by itself: "timed out after 30s", "killed by the agent", "killed by you", … */
 	why?: string;
-	/** Started with background and keep: outlives the session and doesn't hold it. */
+	/** Started with `background: true`: a service (server, watcher) nobody waits on, so it doesn't hold the session. */
+	service: boolean;
+	/** Started with background and keep: outlives the session. */
 	keep: boolean;
 	/** Bytes of the log the agent has already been shown. */
 	read: number;
@@ -48,6 +50,7 @@ export interface StartOptions {
 	/** The shell reads the script from stdin instead of an argument. */
 	stdin?: boolean;
 	timeoutMs?: number;
+	service: boolean;
 	keep: boolean;
 }
 
@@ -69,8 +72,12 @@ export class Jobs {
 	private seq = 0;
 	private runs = 0;
 	private hooks = new Set<ExitHook>();
+	/** Every command still running, jobs or not yet (in the foreground window). */
+	private live = new Set<Job>();
 	/** Called for a finished job nobody claimed and the agent doesn't already know about. */
 	onFinished?: (job: Job) => void;
+	/** Jobs that finished while no session was attached (during a reload), for the next one to report. */
+	unreported: Job[] = [];
 	/** Called whenever a job starts, moves to the background, ends or is cleared. */
 	onChange?: () => void;
 
@@ -87,7 +94,7 @@ export class Jobs {
 		const fd = fs.openSync(log, "w", 0o600);
 		let resolveExit!: () => void;
 		const job: Job = {
-			id: "", command: o.command, cwd: o.cwd, log, startedAt: Date.now(), state: "running", keep: o.keep,
+			id: "", command: o.command, cwd: o.cwd, log, startedAt: Date.now(), state: "running", service: o.service, keep: o.keep,
 			read: 0, silent: false, exited: new Promise(r => { resolveExit = r; }),
 		};
 		let timer: ReturnType<typeof setTimeout> | undefined;
@@ -96,10 +103,11 @@ export class Jobs {
 			if (timer) clearTimeout(timer);
 			job.endedAt = Date.now();
 			job.exitCode = exitCode;
+			this.live.delete(job);
 			job.state = job.why ? (job.why.startsWith("timed out") ? "failed" : "killed") : exitCode === 0 ? "done" : "failed";
 			let claimed = false;
 			for (const hook of [...this.hooks]) claimed = hook(job) || claimed;
-			if (job.id && !claimed && !job.silent) this.onFinished?.(job);
+			if (job.id && !claimed && !job.silent) { if (this.onFinished) this.onFinished(job); else this.unreported.push(job); }
 			resolveExit();
 			this.onChange?.();
 		};
@@ -109,6 +117,7 @@ export class Jobs {
 			});
 			if (o.stdin) { child.stdin?.on("error", () => {}); child.stdin?.end(o.script); }
 			job.pid = child.pid;
+			this.live.add(job);
 			child.once("error", err => { fs.appendFileSync(log, `\n${err.message}\n`); finish(127); });
 			child.once("exit", (code, signal) => finish(code ?? (signal ? 128 + (osConstants.signals[signal] ?? 0) : 1)));
 			// Pi keeps running whatever its jobs do; a kept job must not hold the event loop open either.
@@ -141,9 +150,9 @@ export class Jobs {
 		return this.list.filter(j => j.state === "running");
 	}
 
-	/** Running jobs that the session should count as its own outstanding work. */
+	/** Running jobs the session should count as outstanding work: ones expected to finish, not services. */
 	holding(): Job[] {
-		return this.list.filter(j => j.state === "running" && !j.keep);
+		return this.list.filter(j => j.state === "running" && !j.service);
 	}
 
 	/** Stop a command and everything it started (its process group): TERM, then KILL after a grace period. */
@@ -160,7 +169,7 @@ export class Jobs {
 
 	/** Synchronous last resort when this process exits: whatever isn't kept dies with it. */
 	killNow(): void {
-		for (const job of this.list) if (job.state === "running" && !job.keep && job.pid) {
+		for (const job of this.live) if (!job.keep && job.pid) {
 			try { process.kill(-job.pid, "SIGKILL"); } catch { /* already gone */ }
 		}
 	}
