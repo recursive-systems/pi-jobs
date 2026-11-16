@@ -4,11 +4,13 @@
 //   1. a fast command comes back inline, as the built-in bash would return it
 //   2. a slow command moves to the background, and its completion message arrives by itself
 //   3. jobs output reads a background job and jobs kill stops it
+//   4. hold: in print mode (as a loop run), a `background: true` job keeps the run open until it reports;
+//      a `service: true` one doesn't
 //
 // A model is needed to call tools, so it is opt-in: PI_E2E_PROVIDER and PI_E2E_MODEL select it
 // (never chosen silently). PI_E2E_MODELS_FILE points at a Pi models.json with that provider;
 // PI_E2E_AUTH_FILE at an auth.json if the provider needs one. Without them every case skips.
-// Needs `pi` on PATH (PI_BIN to override). Run: npm test   (CASE=fast|slow|kill runs one case)
+// Needs `pi` on PATH (PI_BIN to override). Run: npm test   (CASE=fast|slow|kill|hold runs one case)
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -124,6 +126,31 @@ const cases = {
 	},
 };
 
+/** `pi -p` with this package, as a loop run would use it; resolves to its exit, output and duration. */
+function printRun(p, prompt, ms = 180_000) {
+	return new Promise(resolve => {
+		const t0 = Date.now();
+		const proc = spawn(PI, ["-p", "--no-session", "--no-extensions", "-e", PACKAGE, prompt], { cwd: p.cwd, env: { ...process.env, PI_CODING_AGENT_DIR: p.agent }, stdio: ["ignore", "pipe", "pipe"] });
+		let out = "";
+		proc.stdout.on("data", d => (out += d));
+		proc.stderr.on("data", () => {});
+		const t = setTimeout(() => proc.kill("SIGKILL"), ms);
+		proc.on("close", code => { clearTimeout(t); resolve({ code, out, s: (Date.now() - t0) / 1000 }); });
+	});
+}
+
+const printCases = {
+	async hold(p) {
+		const a = await printRun(p, "Call bash exactly once with background: true and command exactly `sleep 15; echo held-$((6*7))`. Then end your turn at once with the single word: started. When a message says the job finished, reply with its last output line.");
+		assert.equal(a.code, 0, a.out);
+		assert.match(a.out, /held-42/, `the run stayed open for the background job's result: ${a.out}`);
+		assert.ok(a.s >= 15, `ran ${a.s}s`);
+		const b = await printRun(p, "Call bash exactly once with service: true and command exactly `sleep 120`. Then end your turn at once with the single word: started.");
+		assert.equal(b.code, 0, b.out);
+		assert.ok(b.s < 90, `a service didn't hold the run (${b.s}s)`);
+	},
+};
+
 const only = process.env.CASE;
 let failed = 0;
 for (const [name, run] of Object.entries(cases)) {
@@ -141,6 +168,21 @@ for (const [name, run] of Object.entries(cases)) {
 	} finally {
 		pi.stop();
 		await new Promise(r => setTimeout(r, 1_000));
+		p.cleanup();
+	}
+}
+for (const [name, run] of Object.entries(printCases)) {
+	if (only && only !== name) continue;
+	if (!PROVIDER || !MODEL) { console.log(`skip ${name}: set PI_E2E_PROVIDER and PI_E2E_MODEL to opt in (a real model calls the tools)`); continue; }
+	const p = setup();
+	const t0 = Date.now();
+	try {
+		await run(p);
+		console.log(`ok   ${name} (${Math.round((Date.now() - t0) / 1000)}s)`);
+	} catch (e) {
+		failed++;
+		console.log(`FAIL ${name}: ${e.stack ?? e}`);
+	} finally {
 		p.cleanup();
 	}
 }

@@ -11,6 +11,8 @@ one message when a job finishes.
 - Jobs live process-wide (`shared` in `index.ts`), keyed by session, because Pi rebuilds extensions
   on every reload and session switch. A reload keeps a session's jobs; leaving the session stops all
   but kept ones. Keep that: no job outlives its session unless it was started with `keep`.
+- `background: true` only skips the threshold: the job holds the session (print mode, liveness) and
+  reports like any job. Only `service` (or `keep`) jobs don't hold it.
 - A command that ends inside the threshold must return exactly what the built-in `bash` returns
   (text, details, `isError`, structured output).
 - A job the agent already knows the end of (it killed it, or `jobs wait`/`output` returned it) gets

@@ -21,8 +21,9 @@ const bashSchema = Type.Object({
 	command: Type.String({ description: "Shell command to execute" }),
 	timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (optional, no default timeout). Also applies once the command is a background job." })),
 	threshold: Type.Optional(Type.Number({ description: "Seconds to wait before a still-running command moves to the background as a job (default 5, or jobs.threshold in settings)" })),
-	background: Type.Optional(Type.Boolean({ description: "Start as a background job right away: servers, watchers, things nobody waits on" })),
-	keep: Type.Optional(Type.Boolean({ description: "With background: keep the job running after this Pi session ends" })),
+	background: Type.Optional(Type.Boolean({ description: "Start as a background job right away, without waiting for the threshold: for something long whose result you want (a build, a test run). It reports when it finishes, like any job" })),
+	service: Type.Optional(Type.Boolean({ description: "Start right away as a service: a server or watcher nobody waits on. It never holds the session open" })),
+	keep: Type.Optional(Type.Boolean({ description: "With service: keep it running after this Pi session ends" })),
 });
 
 /** The built-in result for programmatic callers, plus the job a command became. `exit_code` is absent while it runs. */
@@ -38,7 +39,8 @@ const bashOutputSchema = Type.Object({
 
 export const BASH_GUIDELINES = [
 	"A bash command still running after a few seconds moves to the background as a job (j1, j2, …) and bash returns its id and output so far. Don't sleep, poll or re-run it: carry on with other work, and a message arrives when the job finishes.",
-	"Use bash with background: true for servers and watchers (things nobody waits on); just run long builds and tests normally, they move to the background by themselves. Add keep: true only if a background job must outlive this Pi session; every other job is stopped when the session ends.",
+	"Use bash with background: true to start something you know is long (a build, a test run) without waiting for the threshold; its result arrives as a message like any job's. Give it a timeout if it could hang.",
+	"Use bash with service: true for servers and watchers that never finish on their own; they don't hold the session open. Add keep: true only if a service must outlive this Pi session; every other job is stopped when the session ends.",
 ];
 
 /** Pi's own env for commands: its shell env, with this session's PI_* variables. */
@@ -86,7 +88,7 @@ export function bashTool(getJobs: () => Jobs) {
 		parameters: bashSchema,
 		outputSchema: bashOutputSchema,
 		constrainedSampling: builtin.constrainedSampling,
-		async execute(_id: string, params: { command: string; timeout?: number; threshold?: number; background?: boolean; keep?: boolean },
+		async execute(_id: string, params: { command: string; timeout?: number; threshold?: number; background?: boolean; service?: boolean; keep?: boolean },
 			signal: AbortSignal | undefined, onUpdate: ((r: any) => void) | undefined, ctx: ExtensionContext) {
 			const jobs = getJobs();
 			const cwd = ctx?.cwd || process.cwd();
@@ -94,17 +96,20 @@ export function bashTool(getJobs: () => Jobs) {
 			const timeout = seconds(params.timeout, "timeout");
 			const threshold = seconds(params.threshold, "threshold") ?? settings.threshold;
 			if (signal?.aborted) throw new Error("Command aborted");
+			// A kept job outlives the session, so it can't be what the session waits for: keep makes it a service.
+			const service = !!(params.service || params.keep);
+			const now = service || !!params.background;
 			const shell = getShellConfig(settings.shellPath) as { shell: string; args: string[]; commandTransport?: string };
 			const job = jobs.start({
 				command: params.command,
 				script: settings.shellCommandPrefix ? `${settings.shellCommandPrefix}\n${params.command}` : params.command,
 				cwd, env: commandEnv(ctx), shell: shell.shell, shellArgs: shell.args, stdin: shell.commandTransport === "stdin",
 				timeoutMs: timeout === undefined ? undefined : timeout * 1000,
-				service: !!params.background,
-				keep: !!(params.background && params.keep),
+				service,
+				keep: !!params.keep,
 			});
 
-			if (!params.background) {
+			if (!now) {
 				onUpdate?.({ content: [], details: undefined });
 				let size = 0;
 				const ticker = setInterval(() => {
@@ -138,9 +143,10 @@ export function bashTool(getJobs: () => Jobs) {
 			jobs.promote(job);
 			const s = shown(jobs, job);
 			job.read = s.end;
-			const how = params.background ? "Started in the background" : `Still running after ${formatAge(Date.now() - job.startedAt)}: moved to the background`;
+			const how = service ? "Started as a service" : params.background ? "Started in the background" : `Still running after ${formatAge(Date.now() - job.startedAt)}: moved to the background`;
 			const note = `[${how} as job ${job.id}${job.keep ? " (kept after this session ends)" : ""}. Log: ${job.log}. ` +
-				"A message will arrive when it finishes; carry on meanwhile. jobs reads its output, waits for it or kills it.]";
+				(service ? "It doesn't hold the session open; a message arrives if it ends. " : "A message will arrive when it finishes; carry on meanwhile, or end your turn if nothing else needs doing. ") +
+				"jobs reads its output, waits for it or kills it.]";
 			return {
 				content: [{ type: "text", text: appendStatus(s.raw ? s.text : "", note) }],
 				details: s.truncated ? { truncation: s.truncation, fullOutputPath: job.log } : undefined,

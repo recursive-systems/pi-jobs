@@ -28,9 +28,9 @@ export interface Job {
 	state: JobState;
 	/** Why it ended other than by itself: "timed out after 30s", "killed by the agent", "killed by you", … */
 	why?: string;
-	/** Started with `background: true`: a service (server, watcher) nobody waits on, so it doesn't hold the session. */
+	/** Started with `service: true` (or `keep`): a server or watcher nobody waits on, so it doesn't hold the session. */
 	service: boolean;
-	/** Started with background and keep: outlives the session. */
+	/** Started with keep (always a service): outlives the session. */
 	keep: boolean;
 	/** Bytes of the log the agent has already been shown. */
 	read: number;

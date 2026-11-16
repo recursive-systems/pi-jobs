@@ -7,7 +7,7 @@
  *
  * Jobs live process-wide, keyed by session, because Pi rebuilds extensions on every reload and session
  * switch: a reload keeps the session's jobs; leaving the session (quit, new, resume, fork) stops them,
- * except ones started with `background: true, keep: true`.
+ * except ones started with `keep: true` (a service that outlives the session).
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -76,7 +76,10 @@ export default function (pi: ExtensionAPI) {
 	pi.on("agent_before_settle", async (event: any, c: ExtensionContext) => {
 		if (!jobs || (c.mode !== "print" && c.mode !== "json") || !jobs.holding().length) return;
 		const own = jobs;
-		const ended = await own.waitFor(j => !!j.id && !j.service, Infinity, c.signal);
+		// Jobs' children are unref'd, so nothing else keeps Node alive here: without this it exits mid-wait.
+		const keepAlive = setInterval(() => {}, 60_000);
+		let ended: Job | undefined;
+		try { ended = await own.waitFor(j => !!j.id && !j.service, Infinity, c.signal); } finally { clearInterval(keepAlive); }
 		if (!ended) return;
 		return {
 			entries: [...event.entries, { type: "custom_message", customType: MESSAGE_TYPE, content: report(own, ended), display: true }],

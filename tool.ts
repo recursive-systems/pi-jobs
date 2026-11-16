@@ -24,7 +24,7 @@ export function jobsTool(getJobs: () => Jobs) {
 	return {
 		name: "jobs",
 		label: "jobs",
-		description: "Background jobs (commands bash moved to the background, or started with background: true): list them, read a job's new output, wait a bounded time for one to finish, or kill one and everything it started.",
+		description: "Background jobs (commands bash moved to the background, or started with background or service): list them, read a job's new output, wait a bounded time for one to finish, or kill one and everything it started.",
 		promptSnippet: "Background shell jobs: list, output, wait (bounded), kill",
 		promptGuidelines: JOBS_GUIDELINES,
 		parameters: Type.Object({

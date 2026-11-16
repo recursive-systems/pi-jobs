@@ -15,11 +15,13 @@ last lines.
 
 - **Fast commands are unchanged.** Anything that ends within the threshold comes back exactly as
   Pi's built-in `bash` would return it.
-- **Servers and watchers start in the background.** `bash` with `background: true` skips the wait,
-  and such a job never holds the session open.
+- **Long commands can start in the background.** `bash` with `background: true` skips the wait; the
+  job reports when it finishes like any other.
+- **Servers and watchers run as services.** `bash` with `service: true` starts at once and never
+  holds the session open.
 - **Nothing is left behind.** Each command runs in its own process group, and leaving the session
   (quit, new, resume, fork) stops its jobs and everything they started. A job that must outlive the
-  session is started with `background: true, keep: true`.
+  session is started with `service: true, keep: true`.
 - **A reload keeps the jobs.** They carry on, and the reloaded session still gets their messages.
 - **The agent can check in.** The `jobs` tool lists jobs, reads a job's new output, waits a bounded
   time for one, or kills one.
@@ -69,14 +71,14 @@ built-in `bash`.
 
 - Logs live in your temp folder, one per job, and go when the session ends (a kept job's log stays).
 - `timeout` still applies once a command is a job.
-- In print and JSON mode (`pi -p`), Pi stays until running jobs finish (not `background: true` ones), so their results aren't lost.
+- In print and JSON mode (`pi -p`), Pi stays until running jobs finish (not services), so their results aren't lost.
 - A host can see that a turn still owns running jobs through the session-liveness v1 registry, if one
   is present.
 
 ## Optional end-to-end checks
 
 Outside the build, nonblocking and against the real `pi`, with no mocks: `npm test`
-(`CASE=fast|slow|kill` runs one case).
+(`CASE=fast|slow|kill|hold` runs one case).
 
 A real model calls the tools, so these are opt-in: set `PI_E2E_PROVIDER` and `PI_E2E_MODEL`
 explicitly. For an existing Pi gateway connection, also set `PI_E2E_MODELS_FILE` and
