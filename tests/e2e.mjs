@@ -107,17 +107,20 @@ const cases = {
 		assert.equal(messages.length, 1, "exactly one completion message");
 	},
 	async kill(pi) {
-		await pi.prompt("Do these three steps with tools, one at a time: 1) bash with background: true running exactly `for i in $(seq 1 300); do echo tick-$i; sleep 1; done`; 2) bash running `sleep 3`; 3) the jobs tool with action output for that background job; 4) the jobs tool with action kill for it. Then reply done.");
+		// A marker of this run's own, so the process check below can't match anything else on the machine.
+		const mark = `k${process.pid}x${Date.now() % 100_000}`;
+		await pi.prompt(`Do these steps with tools, one at a time: 1) bash with background: true running exactly \`for i in $(seq 1 300); do echo tick-$i-${mark}; sleep 1; done\`; 2) bash running \`sleep 3\`; 3) the jobs tool with action output for that background job; 4) the jobs tool with action kill for it. Then reply done.`);
 		await pi.settled();
-		const bg = pi.toolEnds("bash").map(e => textOf(e.result)).find(t => /Started in the background as job (j\d+)/.test(t));
-		assert.ok(bg, "a background job was started");
+		const bg = pi.toolEnds("bash").map(e => textOf(e.result)).filter(t => /Started in the background as job (j\d+)/.test(t));
+		// The model must start exactly one; a second, never killed, would rightly still be running.
+		assert.equal(bg.length, 1, "one background job was started");
 		const outputs = pi.toolEnds("jobs").map(e => textOf(e.result));
 		assert.ok(outputs.some(t => /tick-\d+/.test(t) && /running/.test(t)), `jobs output showed ticks: ${outputs.join(" | ")}`);
 		assert.ok(outputs.some(t => /killed by the agent/.test(t)), `jobs kill stopped it: ${outputs.join(" | ")}`);
 		await new Promise(r => setTimeout(r, 3_000));
 		assert.ok(!pi.lines.some(l => l.type === "message_start" && l.message?.customType === "pi-jobs"), "no completion message for a job the agent killed");
-		const ps = await new Promise(res => { const p = spawn("pgrep", ["-f", "seq 1 300"]); let o = ""; p.stdout.on("data", d => (o += d)); p.on("close", () => res(o.trim())); });
-		assert.equal(ps, "", "the killed job's processes are gone");
+		const ps = await new Promise(res => { const p = spawn("pgrep", ["-af", mark]); let o = ""; p.stdout.on("data", d => (o += d)); p.on("close", () => res(o.trim())); });
+		assert.equal(ps, "", `the killed job's processes are gone: ${ps}`);
 	},
 };
 
