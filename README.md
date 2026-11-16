@@ -40,7 +40,7 @@ Add `-l` to install it for one project only.
 
 ```
 ↑/↓ or j/k   move
-Enter        watch its output, live
+Enter        watch its output full screen, live (PgUp/PgDn scroll)
 x            kill it
 c            clear finished jobs
 Esc          close (or, while watching, back to the list)

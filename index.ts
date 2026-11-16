@@ -29,6 +29,8 @@ const SHUTDOWN_GRACE_MS = 1_000;
 const MAX_GLYPHS = 15;
 /** How long a failed or killed job stays in the status line, and a done one leaves a `/jobs` hint (as Claude Code does). */
 const LINGER_MS = 30_000;
+/** A job's log watched full screen. */
+const FULL_SCREEN = { width: "100%", maxHeight: "100%", anchor: "top-left" } as const;
 
 interface Shared { sessions: Map<string, Jobs>; exitHook: boolean }
 
@@ -172,15 +174,28 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	// ------------------------------------------------------------ /jobs --
+	/** The jobs list; Enter on a job (or `watch`) opens its log full screen, and Esc there comes back here
+	 *  (or closes, when it was opened on that job). */
 	async function openView(c: any, watch?: string) {
 		const own = getJobs();
-		await c.ui.custom((tui: any, theme: any, _kb: any, done: () => void) => new JobsView(tui, theme, {
+		const deps = {
 			jobs: () => own.list,
-			lines: (job, n) => own.tail(job, n),
-			kill: job => { job.silent = true; own.kill(job, "killed by you"); },
+			lines: (job: Job, n: number) => own.tail(job, n),
+			kill: (job: Job) => { job.silent = true; own.kill(job, "killed by you"); },
 			clearFinished: () => own.clearFinished(),
 			title: path.basename(c.cwd ?? ctx?.cwd ?? process.cwd()),
-		}, done, watch), { overlay: true });
+		};
+		const show = (id?: string, select?: string): Promise<string | undefined> => c.ui.custom(
+			(tui: any, theme: any, _kb: any, done: (w?: string) => void) => new JobsView(tui, theme, deps, done, id, select),
+			{ overlay: true, ...(id ? { overlayOptions: FULL_SCREEN } : {}) });
+		if (watch) { await show(watch); return; }
+		let last: string | undefined;
+		for (;;) {
+			const picked = await show(undefined, last);
+			if (!picked) return;
+			await show(picked);
+			last = picked;
+		}
 	}
 
 	pi.registerCommand("jobs", {
