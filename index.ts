@@ -88,20 +88,28 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	// ------------------------------------------------------------ status --
-	function statusLine(theme?: any): string {
-		const fg = (color: string, t: string) => { try { return theme ? theme.fg(color, t) : t; } catch { return t; } };
-		// What's going on now, like Claude Code's footer: running jobs, and failed or killed ones for LINGER_MS.
-		// A job that finished fine leaves at once, with a `/jobs` hint for LINGER_MS. /jobs keeps them all.
+	// What's going on now, like Claude Code's footer: running jobs, and failed or killed ones for LINGER_MS.
+	// A job that finished fine leaves at once, with a `/jobs` hint for LINGER_MS. /jobs keeps them all.
+	function nowJobs() {
 		const now = Date.now();
 		const recent = (j: Job) => !!j.endedAt && now - j.endedAt < LINGER_MS;
 		const all = jobs?.list ?? [];
 		const list = all.filter(j => j.state === "running" || (j.state !== "done" && recent(j)));
-		const done = all.filter(j => j.state === "done" && recent(j)).length;
+		return { list, shown: list.slice(-MAX_GLYPHS), done: all.filter(j => j.state === "done" && recent(j)).length };
+	}
+
+	/** `pick`: the job the status bar's keyboard is on (its symbol inverted, its id and command beside the strip). */
+	function statusLine(theme?: any, pick?: number): string {
+		const fg = (color: string, t: string) => { try { return theme ? theme.fg(color, t) : t; } catch { return t; } };
+		const inv = (t: string) => { try { return theme ? theme.inverse(t) : t; } catch { return t; } };
+		const { list, shown, done } = nowJobs();
 		const hint = done ? fg("dim", `${list.length ? " · " : ""}${done} done, /jobs`) : "";
 		if (!list.length) return `${fg("muted", "jobs")} ${hint || fg("dim", "none")}`;
-		const shown = list.slice(-MAX_GLYPHS);
-		const strip = shown.map(j => fg(GLYPH[j.state].color, GLYPH[j.state].glyph)).join("");
-		return `${fg("muted", "jobs")} ${strip}${list.length > shown.length ? fg("dim", ` +${list.length - shown.length}`) : ""}${hint}`;
+		const strip = shown.map((j, i) => { const s = fg(GLYPH[j.state].color, GLYPH[j.state].glyph); return i === pick ? inv(s) : s; }).join("");
+		const more = list.length > shown.length ? fg("dim", ` +${list.length - shown.length}`) : "";
+		const picked = pick !== undefined ? shown[pick] : undefined;
+		if (picked) return `${fg("muted", "jobs")} ${strip}${more} ${fg("accent", picked.id)} ${picked.command.split("\n")[0]} ${fg("dim", "· Enter watch")}`;
+		return `${fg("muted", "jobs")} ${strip}${more}${hint}`;
 	}
 
 	/** Redraw the status line when the next finished job's LINGER_MS runs out. */
@@ -116,12 +124,15 @@ export default function (pi: ExtensionAPI) {
 		lingerTimer.unref?.();
 	}
 
-	/** Our row in pi-statusbar (bundled; `statusbar:*` events): the same line, Enter opens /jobs. */
+	/** Our row in pi-statusbar (bundled; `statusbar:*` events): the same line. Enter opens /jobs; ←/→ pick a job
+	 *  in the strip, and Enter on one opens its output, live. */
 	function registerBarItem() {
 		pi.events.emit("statusbar:item", {
 			id: "jobs",
 			order: 25,
-			render: (theme: any, width: number) => [truncateToWidth(` ${statusLine(theme)}`, width)],
+			render: (theme: any, width: number, focus?: { item?: number }) => [truncateToWidth(` ${statusLine(theme, focus?.item)}`, width)],
+			count: () => nowJobs().shown.length,
+			command: (i?: number) => { const j = i !== undefined ? nowJobs().shown[i] : undefined; return j ? `/jobs ${j.id}` : "/jobs"; },
 			open: (c: any) => openView(c),
 		});
 	}
@@ -161,7 +172,7 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	// ------------------------------------------------------------ /jobs --
-	async function openView(c: any) {
+	async function openView(c: any, watch?: string) {
 		const own = getJobs();
 		await c.ui.custom((tui: any, theme: any, _kb: any, done: () => void) => new JobsView(tui, theme, {
 			jobs: () => own.list,
@@ -169,14 +180,18 @@ export default function (pi: ExtensionAPI) {
 			kill: job => { job.silent = true; own.kill(job, "killed by you"); },
 			clearFinished: () => own.clearFinished(),
 			title: path.basename(c.cwd ?? ctx?.cwd ?? process.cwd()),
-		}, done), { overlay: true });
+		}, done, watch), { overlay: true });
 	}
 
 	pi.registerCommand("jobs", {
-		description: "Background shell jobs: watch their output, kill them, clear finished ones",
-		handler: async (_args: string, c: any) => {
-			if (c.mode === "tui") return openView(c);
+		description: "Background shell jobs: watch their output, kill them, clear finished ones · /jobs <id> watches one",
+		handler: async (args: string, c: any) => {
 			const own = getJobs();
+			const id = args.trim();
+			const job = id ? own.list.find(j => j.id === id) : undefined;
+			if (id && !job) { c.ui.notify(`no job "${id}"`, "warning"); return; }
+			if (c.mode === "tui") return openView(c, job?.id);
+			if (job) { c.ui.notify([own.describe(job), ...own.tail(job, 30)].join("\n"), "info"); return; }
 			c.ui.notify(own.list.length ? own.list.map(j => own.describe(j)).join("\n") : "No jobs.", "info");
 		},
 	});

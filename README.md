@@ -36,7 +36,7 @@ Add `-l` to install it for one project only.
 
 ## /jobs
 
-`/jobs` shows every job in the session: its state, command and age.
+`/jobs` shows every job in the session: its state, command and age. `/jobs <id>` opens one job's output.
 
 ```
 ↑/↓ or j/k   move
@@ -52,8 +52,9 @@ finished fine leaves at once with a `1 done, /jobs` hint for 30 s (`jobs ◉✕ 
 `jobs none`). `/jobs` keeps every job until you clear it there.
 
 pi-jobs bundles [pi-statusbar](https://github.com/recursive-systems/pi-statusbar), so that line gets
-its own row below the editor (`id: "jobs"`, order 25; opening it shows `/jobs`) instead of a footer
-status. Only one bar is drawn when pi-loop or pi-statusbar is installed too.
+its own row below the editor (`id: "jobs"`, order 25) instead of a footer status. Only one bar is
+drawn when pi-loop or pi-statusbar is installed too. Press ↓ from an empty editor to reach it: Enter
+opens `/jobs`, ←/→ pick a job, and Enter on one shows its output live (as `/jobs <id>` does).
 
 ## Settings
 

@@ -29,8 +29,9 @@ export class JobsView {
 	private note = "";
 	private timer: ReturnType<typeof setInterval>;
 
-	constructor(private tui: { requestRender(): void }, private theme: any, private deps: ViewDeps, private done: () => void) {
+	constructor(private tui: { requestRender(): void }, private theme: any, private deps: ViewDeps, private done: () => void, watch?: string) {
 		this.timer = setInterval(() => this.tui.requestRender(), 1000);
+		if (watch) { this.watching = watch; this.sel = Math.max(0, deps.jobs().findIndex(j => j.id === watch)); }
 	}
 
 	private fg(color: string, s: string) { try { return this.theme.fg(color, s); } catch { return s; } }
