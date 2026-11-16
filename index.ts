@@ -25,6 +25,8 @@ const SHARED = Symbol.for("pi-jobs.v1");
 const LIVENESS = Symbol.for("@agegr/pi-web/session-liveness/v1");
 /** How long a job stopped with its session gets to exit on SIGTERM before SIGKILL. */
 const SHUTDOWN_GRACE_MS = 1_000;
+/** The most job glyphs the status line shows; older ones collapse into `+n`. */
+const MAX_GLYPHS = 15;
 
 interface Shared { sessions: Map<string, Jobs>; exitHook: boolean }
 
@@ -83,9 +85,12 @@ export default function (pi: ExtensionAPI) {
 	// ------------------------------------------------------------ status --
 	function statusLine(theme?: any): string {
 		const fg = (color: string, t: string) => { try { return theme ? theme.fg(color, t) : t; } catch { return t; } };
-		const running = jobs?.running() ?? [];
-		const g = GLYPH.running;
-		return `${fg("muted", "jobs")} ${fg(g.color, g.glyph.repeat(Math.min(running.length, 5)))}${running.length > 5 ? fg("dim", ` ${running.length}`) : ""}`;
+		// One glyph per job this session tracks, finished ones until cleared in /jobs; always shown, like loops.
+		const list = jobs?.list ?? [];
+		if (!list.length) return `${fg("muted", "jobs")} ${fg("dim", "none")}`;
+		const shown = list.slice(-MAX_GLYPHS);
+		const strip = shown.map(j => fg(GLYPH[j.state].color, GLYPH[j.state].glyph)).join("");
+		return `${fg("muted", "jobs")} ${strip}${list.length > shown.length ? fg("dim", ` +${list.length - shown.length}`) : ""}`;
 	}
 
 	/** Our row in a status bar extension (pi-loop's `statusbar:*` events): the same line, Enter opens /jobs. */
@@ -93,7 +98,7 @@ export default function (pi: ExtensionAPI) {
 		pi.events.emit("statusbar:item", {
 			id: "jobs",
 			order: 25,
-			render: (theme: any, width: number) => (jobs?.running().length ? [truncateToWidth(` ${statusLine(theme)}`, width)] : []),
+			render: (theme: any, width: number) => [truncateToWidth(` ${statusLine(theme)}`, width)],
 			open: (c: any) => openView(c),
 		});
 	}
@@ -101,11 +106,10 @@ export default function (pi: ExtensionAPI) {
 	function refreshStatus() {
 		if (!ctx) return;
 		registerLiveness();
-		const any = !!jobs?.running().length;
 		try {
-			if (barMode) { if (any) registerBarItem(); else pi.events.emit("statusbar:remove", { id: "jobs" }); return; }
+			if (barMode) { registerBarItem(); return; }
 			let theme: any; try { theme = ctx.ui.theme; } catch { /* no UI */ }
-			ctx.ui.setStatus(STATUS_KEY, any ? statusLine(theme) : undefined);
+			ctx.ui.setStatus(STATUS_KEY, statusLine(theme));
 		} catch { /* the session is gone */ }
 	}
 
