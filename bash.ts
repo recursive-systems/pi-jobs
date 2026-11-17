@@ -40,6 +40,7 @@ const bashOutputSchema = Type.Object({
 export const BASH_GUIDELINES = [
 	"A bash command still running after a few seconds moves to the background as a job (j1, j2, …) and bash returns its id and output so far. Don't sleep, poll or re-run it: carry on with other work, and a message arrives when the job finishes.",
 	"Use bash with background: true to start something you know is long (a build, a test run) without waiting for the threshold; its result arrives as a message like any job's. Give it a timeout if it could hang.",
+	"To wait for something (a process ending, a deploy going live, a file appearing), start a background job that exits when the condition is met, e.g. `until <check>; do sleep 30; done`, with a timeout; act when its message arrives instead of polling or promising to check later.",
 	"Use bash with service: true for servers and watchers that never finish on their own; they don't hold the session open. Add keep: true only if a service must outlive this Pi session; every other job is stopped when the session ends.",
 ];
 
