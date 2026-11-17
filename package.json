@@ -1,6 +1,6 @@
 {
   "name": "pi-jobs",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Background shell jobs for the Pi coding agent: a command still running after a few seconds moves to the background on its own, is tracked, and the session is told when it finishes.",
   "license": "MIT",
   "private": true,

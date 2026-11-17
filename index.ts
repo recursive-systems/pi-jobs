@@ -5,9 +5,10 @@
  * job; the session gets one message when it finishes. `jobs` lists, reads, waits for and kills jobs;
  * `/jobs` shows them. See README.md.
  *
- * Jobs live process-wide, keyed by session, because Pi rebuilds extensions on every reload and session
- * switch: a reload keeps the session's jobs; leaving the session (quit, new, resume, fork) stops them,
- * except ones started with `keep: true` (a service that outlives the session).
+ * Jobs live process-wide, because Pi rebuilds extensions on every reload and session switch. They follow
+ * whichever session is current: a reload keeps them, and a switch (new, resume, fork) hands them to the
+ * session you land in, which shows them and gets their completion messages. Quitting Pi stops them,
+ * except ones started with `keep: true` (a service that outlives Pi).
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -32,7 +33,8 @@ const LINGER_MS = 30_000;
 /** A job's log watched full screen. */
 const FULL_SCREEN = { width: "100%", maxHeight: "100%", anchor: "top-left" } as const;
 
-interface Shared { sessions: Map<string, Jobs>; exitHook: boolean }
+/** `carried`: the jobs of a session just left (new, resume, fork), waiting for the next session_start. */
+interface Shared { sessions: Map<string, Jobs>; exitHook: boolean; carried?: Jobs }
 
 function shared(): Shared {
 	const g = globalThis as any;
@@ -41,7 +43,7 @@ function shared(): Shared {
 	if (!s.exitHook) {
 		s.exitHook = true;
 		// The last resort if Pi exits without a session_shutdown: nothing unkept outlives it.
-		process.once("exit", () => { for (const jobs of s.sessions.values()) jobs.killNow(); });
+		process.once("exit", () => { for (const jobs of s.sessions.values()) jobs.killNow(); s.carried?.killNow(); });
 	}
 	return s;
 }
@@ -216,7 +218,11 @@ export default function (pi: ExtensionAPI) {
 		ctx = c;
 		const id = c.sessionManager.getSessionId();
 		const s = shared();
-		jobs = s.sessions.get(id) ?? new Jobs(Jobs.dirFor(id));
+		// Jobs carried over from the session just left become this one's.
+		const carried = s.carried;
+		s.carried = undefined;
+		jobs = carried ?? s.sessions.get(id) ?? new Jobs(Jobs.dirFor(id));
+		for (const [k, j] of s.sessions) if (j === jobs) s.sessions.delete(k);
 		s.sessions.set(id, jobs);
 		jobs.onFinished = announce;
 		jobs.onChange = refreshStatus;
@@ -235,6 +241,9 @@ export default function (pi: ExtensionAPI) {
 		// A reload is the same session: its jobs carry on and the new instance reports them.
 		if (event.reason === "reload") return;
 		for (const [id, j] of shared().sessions) if (j === own) shared().sessions.delete(id);
+		// A switch (new, resume, fork): the jobs carry on and the next session takes them over; any that
+		// finish in between wait in `unreported` for it. Only quitting Pi (or no reason given) stops them.
+		if (event.reason && event.reason !== "quit") { shared().carried = own; return; }
 		const stopping = own.list.filter(j => j.state === "running" && !j.keep);
 		for (const job of stopping) { job.silent = true; own.kill(job, "stopped with the session"); }
 		await Promise.race([Promise.all(stopping.map(j => j.exited)), new Promise(r => setTimeout(r, SHUTDOWN_GRACE_MS))]);

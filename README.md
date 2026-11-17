@@ -19,10 +19,10 @@ last lines.
   job reports when it finishes like any other.
 - **Servers and watchers run as services.** `bash` with `service: true` starts at once and never
   holds the session open.
-- **Nothing is left behind.** Each command runs in its own process group, and leaving the session
-  (quit, new, resume, fork) stops its jobs and everything they started. A job that must outlive the
-  session is started with `service: true, keep: true`.
-- **A reload keeps the jobs.** They carry on, and the reloaded session still gets their messages.
+- **Jobs follow you.** A reload, `/new`, `/resume` or a fork keeps them running, and the session you
+  are in then shows them and gets their messages.
+- **Nothing is left behind.** Each command runs in its own process group, and quitting Pi stops its
+  jobs and everything they started. A job that must outlive Pi is started with `service: true, keep: true`.
 - **The agent can check in.** The `jobs` tool lists jobs, reads a job's new output, waits a bounded
   time for one, or kills one.
 
@@ -70,7 +70,7 @@ built-in `bash`.
 
 ## Good to know
 
-- Logs live in your temp folder, one per job, and go when the session ends (a kept job's log stays).
+- Logs live in your temp folder, one per job, and go when Pi quits (a kept job's log stays).
 - `timeout` still applies once a command is a job.
 - In print and JSON mode (`pi -p`), Pi stays until running jobs finish (not services), so their results aren't lost.
 - A host can see that a turn still owns running jobs through the session-liveness v1 registry, if one

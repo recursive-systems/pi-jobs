@@ -23,7 +23,7 @@ const bashSchema = Type.Object({
 	threshold: Type.Optional(Type.Number({ description: "Seconds to wait before a still-running command moves to the background as a job (default 5, or jobs.threshold in settings)" })),
 	background: Type.Optional(Type.Boolean({ description: "Start as a background job right away, without waiting for the threshold: for something long whose result you want (a build, a test run). It reports when it finishes, like any job" })),
 	service: Type.Optional(Type.Boolean({ description: "Start right away as a service: a server or watcher nobody waits on. It never holds the session open" })),
-	keep: Type.Optional(Type.Boolean({ description: "With service: keep it running after this Pi session ends" })),
+	keep: Type.Optional(Type.Boolean({ description: "With service: keep it running after Pi quits" })),
 });
 
 /** The built-in result for programmatic callers, plus the job a command became. `exit_code` is absent while it runs. */
@@ -41,7 +41,7 @@ export const BASH_GUIDELINES = [
 	"A bash command still running after a few seconds moves to the background as a job (j1, j2, …) and bash returns its id and output so far. Don't sleep, poll or re-run it: carry on with other work, and a message arrives when the job finishes.",
 	"Use bash with background: true to start something you know is long (a build, a test run) without waiting for the threshold; its result arrives as a message like any job's. Give it a timeout if it could hang.",
 	"To wait for something (a process ending, a deploy going live, a file appearing), start a background job that exits when the condition is met, e.g. `until <check>; do sleep 30; done`, with a timeout; act when its message arrives instead of polling or promising to check later.",
-	"Use bash with service: true for servers and watchers that never finish on their own; they don't hold the session open. Add keep: true only if a service must outlive this Pi session; every other job is stopped when the session ends.",
+	"Use bash with service: true for servers and watchers that never finish on their own; they don't hold the session open. Add keep: true only if a service must outlive Pi; every other job is stopped when Pi quits.",
 ];
 
 /** Pi's own env for commands: its shell env, with this session's PI_* variables. */
@@ -145,7 +145,7 @@ export function bashTool(getJobs: () => Jobs) {
 			const s = shown(jobs, job);
 			job.read = s.end;
 			const how = service ? "Started as a service" : params.background ? "Started in the background" : `Still running after ${formatAge(Date.now() - job.startedAt)}: moved to the background`;
-			const note = `[${how} as job ${job.id}${job.keep ? " (kept after this session ends)" : ""}. Log: ${job.log}. ` +
+			const note = `[${how} as job ${job.id}${job.keep ? " (kept after Pi quits)" : ""}. Log: ${job.log}. ` +
 				(service ? "It doesn't hold the session open; a message arrives if it ends. " : "A message will arrive when it finishes; carry on meanwhile, or end your turn if nothing else needs doing. ") +
 				"jobs reads its output, waits for it or kills it.]";
 			return {

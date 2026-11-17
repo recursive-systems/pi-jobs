@@ -8,9 +8,10 @@ one message when a job finishes.
   session lifecycle. `bash.ts` is the `bash` override; `jobs.ts` the registry (process groups, one
   log file per job); `tool.ts` the `jobs` tool; `view.ts` the `/jobs` view; `settings.ts` reads
   `jobs.threshold` and Pi's shell settings.
-- Jobs live process-wide (`shared` in `index.ts`), keyed by session, because Pi rebuilds extensions
-  on every reload and session switch. A reload keeps a session's jobs; leaving the session stops all
-  but kept ones. Keep that: no job outlives its session unless it was started with `keep`.
+- Jobs live process-wide (`shared` in `index.ts`), because Pi rebuilds extensions on every reload
+  and session switch. They follow the current session: a reload keeps them, and a switch (new,
+  resume, fork) hands them to the session you land in, which reports them. Quitting Pi stops all but
+  kept ones. Keep that: no job outlives Pi unless it was started with `keep`.
 - `background: true` only skips the threshold: the job holds the session (print mode, liveness) and
   reports like any job. Only `service` (or `keep`) jobs don't hold it.
 - A command that ends inside the threshold must return exactly what the built-in `bash` returns

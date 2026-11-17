@@ -213,7 +213,7 @@ export class Jobs {
 		return lines.length === 1 && !lines[0] ? [] : lines.slice(-n);
 	}
 
-	/** Forget finished jobs (their logs stay on disk until the session ends). */
+	/** Forget finished jobs (their logs stay on disk until Pi quits). */
 	clearFinished(): number {
 		const before = this.list.length;
 		for (let i = this.list.length - 1; i >= 0; i--) if (this.list[i]!.state !== "running") this.list.splice(i, 1);
